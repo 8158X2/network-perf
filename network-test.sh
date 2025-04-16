@@ -1,5 +1,5 @@
 #!/bin/bash
-# build# 0000
+# build 0001
 # network_test.sh - Unified network testing script for RHEL 9.4 with CSV logging
 
 LOG_FILE="network_test_log.csv"
@@ -173,7 +173,7 @@ generate_plots() {
   }
   
   # Create a simpler Python plotting script
-  cat > plot_script.py << 'END_PYTHON'
+  cat > plot_script.py << 'EOF'
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -210,7 +210,7 @@ try:
     print("Plot generated successfully")
 except Exception as e:
     print(f"Error generating plot: {str(e)}")
-END_PYTHON
+EOF
 
   # Check if required Python packages are installed
   if ! python3 -c "import pandas, matplotlib" 2>/dev/null; then
