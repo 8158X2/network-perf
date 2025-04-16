@@ -164,48 +164,71 @@ generate_summary() {
 generate_plots() {
   echo "Generating plots..."
   
-  # Check if gnuplot is installed
-  if ! command -v gnuplot &> /dev/null; then
-    echo "Warning: gnuplot is not installed. Please install it to generate plots."
-    echo "On RHEL: sudo dnf install gnuplot"
+  # Check if Python is installed
+  if ! command -v python3 &> /dev/null; then
+    echo "Warning: Python3 is not installed. Please install it to generate plots."
+    echo "On RHEL: sudo dnf install python3 python3-pip"
     return
   }
   
-  # Create gnuplot script
-  cat > plot_script.gnu << 'EOF'
-set terminal pngcairo size 1200,800 enhanced font 'Verdana,10'
-set datafile separator ','
-set xdata time
-set timefmt "%Y-%m-%d %H:%M:%S"
-set format x "%Y-%m-%d\n%H:%M:%S"
-set grid
-set key outside right
+  # Create Python plotting script
+  cat > plot_script.py << 'EOF'
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
 
-# Latency plot
-set output "network_plots/latency.png"
-set title "Network Latency Over Time"
-set ylabel "Latency (ms)"
-plot "network_test_summary.csv" using 1:2 title "Ping" with lines, \
-     "network_test_summary.csv" using 1:3 title "HTTP Direct" with lines, \
-     "network_test_summary.csv" using 1:4 title "HTTP Proxy" with lines
+# Read the summary data
+df = pd.read_csv('network_test_summary.csv')
+df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-# Download time plot
-set output "network_plots/download_time.png"
-set title "Download Time Over Time"
-set ylabel "Time (seconds)"
-plot "network_test_summary.csv" using 1:5 title "Wget Direct" with lines, \
-     "network_test_summary.csv" using 1:6 title "Wget Proxy" with lines
+# Set up the figure and subplots
+plt.style.use('seaborn')
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 15))
 
-# Bandwidth plot
-set output "network_plots/bandwidth.png"
-set title "Network Bandwidth Over Time"
-set ylabel "Speed (Mbits/sec)"
-plot "network_test_summary.csv" using 1:7 title "iPerf3" with lines
+# Plot 1: Latency
+ax1.plot(df['timestamp'], df['ping_latency'], label='Ping', marker='o')
+ax1.plot(df['timestamp'], df['http_direct_latency'], label='HTTP Direct', marker='s')
+ax1.plot(df['timestamp'], df['http_proxy_latency'], label='HTTP Proxy', marker='^')
+ax1.set_title('Network Latency Over Time')
+ax1.set_ylabel('Latency (ms)')
+ax1.grid(True)
+ax1.legend()
+
+# Plot 2: Download Time
+ax2.plot(df['timestamp'], df['wget_direct_time'], label='Wget Direct', marker='o')
+ax2.plot(df['timestamp'], df['wget_proxy_time'], label='Wget Proxy', marker='s')
+ax2.set_title('Download Time Over Time')
+ax2.set_ylabel('Time (seconds)')
+ax2.grid(True)
+ax2.legend()
+
+# Plot 3: Bandwidth
+ax3.plot(df['timestamp'], df['iperf3_speed'].str.replace(' Mbits/sec', '').astype(float), 
+         label='iPerf3', marker='o')
+ax3.set_title('Network Bandwidth Over Time')
+ax3.set_ylabel('Speed (Mbits/sec)')
+ax3.grid(True)
+ax3.legend()
+
+# Format x-axis
+for ax in [ax1, ax2, ax3]:
+    ax.tick_params(axis='x', rotation=45)
+    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d\n%H:%M:%S'))
+
+# Adjust layout and save
+plt.tight_layout()
+plt.savefig('network_plots/network_performance.png', dpi=300, bbox_inches='tight')
 EOF
 
+  # Check if required Python packages are installed
+  if ! python3 -c "import pandas, matplotlib" 2>/dev/null; then
+    echo "Installing required Python packages..."
+    python3 -m pip install pandas matplotlib --user
+  fi
+
   # Generate plots
-  gnuplot plot_script.gnu
-  rm plot_script.gnu
+  python3 plot_script.py
+  rm plot_script.py
 }
 
 # Generate summary and plots after tests
