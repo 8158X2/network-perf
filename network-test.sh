@@ -171,54 +171,45 @@ generate_plots() {
     return
   }
   
-  # Create Python plotting script
-  cat > plot_script.py << 'PYTHON_EOF'
+  # Create a simpler Python plotting script
+  cat > plot_script.py << 'END_PYTHON'
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime
 
-# Read the summary data
-df = pd.read_csv('network_test_summary.csv')
-df['timestamp'] = pd.to_datetime(df['timestamp'])
+try:
+    # Read the summary data
+    df = pd.read_csv('network_test_summary.csv')
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-# Set up the figure and subplots
-plt.style.use('seaborn')
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 15))
+    # Create a single plot
+    plt.figure(figsize=(12, 8))
+    
+    # Plot each metric
+    if 'ping_latency' in df.columns:
+        plt.plot(df['timestamp'], df['ping_latency'], label='Ping Latency', marker='o')
+    if 'http_direct_latency' in df.columns:
+        plt.plot(df['timestamp'], df['http_direct_latency'], label='HTTP Direct', marker='s')
+    if 'wget_direct_time' in df.columns:
+        plt.plot(df['timestamp'], df['wget_direct_time'], label='Wget Time', marker='^')
+    if 'iperf3_speed' in df.columns:
+        plt.plot(df['timestamp'], df['iperf3_speed'].str.replace(' Mbits/sec', '').astype(float), 
+                label='iPerf3 Speed', marker='x')
 
-# Plot 1: Latency
-ax1.plot(df['timestamp'], df['ping_latency'], label='Ping', marker='o')
-ax1.plot(df['timestamp'], df['http_direct_latency'], label='HTTP Direct', marker='s')
-ax1.plot(df['timestamp'], df['http_proxy_latency'], label='HTTP Proxy', marker='^')
-ax1.set_title('Network Latency Over Time')
-ax1.set_ylabel('Latency (ms)')
-ax1.grid(True)
-ax1.legend()
-
-# Plot 2: Download Time
-ax2.plot(df['timestamp'], df['wget_direct_time'], label='Wget Direct', marker='o')
-ax2.plot(df['timestamp'], df['wget_proxy_time'], label='Wget Proxy', marker='s')
-ax2.set_title('Download Time Over Time')
-ax2.set_ylabel('Time (seconds)')
-ax2.grid(True)
-ax2.legend()
-
-# Plot 3: Bandwidth
-ax3.plot(df['timestamp'], df['iperf3_speed'].str.replace(' Mbits/sec', '').astype(float), 
-         label='iPerf3', marker='o')
-ax3.set_title('Network Bandwidth Over Time')
-ax3.set_ylabel('Speed (Mbits/sec)')
-ax3.grid(True)
-ax3.legend()
-
-# Format x-axis
-for ax in [ax1, ax2, ax3]:
-    ax.tick_params(axis='x', rotation=45)
-    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d\n%H:%M:%S'))
-
-# Adjust layout and save
-plt.tight_layout()
-plt.savefig('network_plots/network_performance.png', dpi=300, bbox_inches='tight')
-PYTHON_EOF
+    # Format the plot
+    plt.title('Network Performance Over Time')
+    plt.xlabel('Time')
+    plt.ylabel('Value')
+    plt.grid(True)
+    plt.legend()
+    plt.xticks(rotation=45)
+    
+    # Save the plot
+    plt.tight_layout()
+    plt.savefig('network_plots/network_performance.png', dpi=300)
+    print("Plot generated successfully")
+except Exception as e:
+    print(f"Error generating plot: {str(e)}")
+END_PYTHON
 
   # Check if required Python packages are installed
   if ! python3 -c "import pandas, matplotlib" 2>/dev/null; then
