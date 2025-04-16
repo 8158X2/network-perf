@@ -172,7 +172,7 @@ generate_plots() {
   }
   
   # Create Python plotting script
-  cat > plot_script.py << 'EOF'
+  cat > plot_script.py << 'PYTHON_EOF'
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -218,7 +218,7 @@ for ax in [ax1, ax2, ax3]:
 # Adjust layout and save
 plt.tight_layout()
 plt.savefig('network_plots/network_performance.png', dpi=300, bbox_inches='tight')
-EOF
+PYTHON_EOF
 
   # Check if required Python packages are installed
   if ! python3 -c "import pandas, matplotlib" 2>/dev/null; then
