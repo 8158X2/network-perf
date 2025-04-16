@@ -170,7 +170,7 @@ generate_plots() {
     echo "Warning: Python3 is not installed. Please install it to generate plots."
     echo "On RHEL: sudo dnf install python3 python3-pip"
     return
-  }
+  fi
   
   # Create a simpler Python plotting script
   cat > plot_script.py << 'EOF'
