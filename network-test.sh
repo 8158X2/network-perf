@@ -9,17 +9,24 @@ PLOT_DIR="network_plots"
 mkdir -p "$PLOT_DIR"
 
 usage() {
-  echo "Usage: $0 --dest <destination> [--proxy <ip:port>] [--test latency|wget|iperf3|all]"
+  echo "Usage: $0 [--dest <destination>] [--latency-dest <destination>] [--wget-dest <destination>] [--iperf-dest <destination>] [--proxy <ip:port>] [--test latency|wget|iperf3|all]"
+  echo "Note: If specific test destinations are not provided, --dest will be used as fallback"
   exit 1
 }
 
 DEST=""
+LATENCY_DEST=""
+WGET_DEST=""
+IPERF_DEST=""
 PROXY=""
 TEST_TYPE="all"
 
 while [[ "$#" -gt 0 ]]; do
   case $1 in
     --dest) DEST="$2"; shift ;;
+    --latency-dest) LATENCY_DEST="$2"; shift ;;
+    --wget-dest) WGET_DEST="$2"; shift ;;
+    --iperf-dest) IPERF_DEST="$2"; shift ;;
     --proxy) PROXY="$2"; shift ;;
     --test) TEST_TYPE="$2"; shift ;;
     *) echo "Unknown parameter: $1"; usage ;;
@@ -27,7 +34,16 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-[[ -z "$DEST" ]] && { echo "Destination is required."; usage; }
+# Use fallback destinations if specific ones are not provided
+[[ -z "$LATENCY_DEST" ]] && LATENCY_DEST="$DEST"
+[[ -z "$WGET_DEST" ]] && WGET_DEST="$DEST"
+[[ -z "$IPERF_DEST" ]] && IPERF_DEST="$DEST"
+
+# Check if at least one destination is provided
+if [[ -z "$DEST" && -z "$LATENCY_DEST" && -z "$WGET_DEST" && -z "$IPERF_DEST" ]]; then
+  echo "At least one destination is required."
+  usage
+fi
 
 timestamp() {
   date +"%Y-%m-%d %H:%M:%S"
@@ -42,22 +58,23 @@ log_result() {
 
 run_latency() {
   echo -e "\n[Latency Test]"
+  echo "Destination: $LATENCY_DEST"
 
-  if [[ "$DEST" == http* ]]; then
+  if [[ "$LATENCY_DEST" == http* ]]; then
     echo "--> HTTP Latency (Direct)"
-    result=$(curl -o /dev/null -s -w "%{time_total}" "$DEST")
+    result=$(curl -o /dev/null -s -w "%{time_total}" "$LATENCY_DEST")
     echo "Time: ${result}s"
     log_result "latency" "http_direct" "$result"
 
     if [[ -n "$PROXY" ]]; then
       echo "--> HTTP Latency (Via Proxy)"
-      result=$(curl -o /dev/null -s -w "%{time_total}" -x "$PROXY" "$DEST")
+      result=$(curl -o /dev/null -s -w "%{time_total}" -x "$PROXY" "$LATENCY_DEST")
       echo "Time: ${result}s"
       log_result "latency" "http_proxy" "$result"
     fi
   else
     echo "--> Ping Latency"
-    result=$(ping -c 5 "$DEST" | awk -F '/' 'END{ print $(NF-1) }')
+    result=$(ping -c 5 "$LATENCY_DEST" | awk -F '/' 'END{ print $(NF-1) }')
     echo "Avg Latency: ${result}ms"
     log_result "latency" "ping" "$result"
   fi
@@ -65,16 +82,17 @@ run_latency() {
 
 run_wget_bandwidth() {
   echo -e "\n[Bandwidth Test - wget]"
+  echo "Destination: $WGET_DEST"
 
   echo "--> Direct Download"
-  result=$( (time wget --output-document=/dev/null "$DEST") 2>&1 | grep real | awk '{print $2}')
+  result=$( (time wget --output-document=/dev/null "$WGET_DEST") 2>&1 | grep real | awk '{print $2}')
   seconds=$(echo "$result" | awk -Fm '{print ($1*60)+$2}')
   echo "Time: ${seconds}s"
   log_result "wget" "direct_time" "$seconds"
 
   if [[ -n "$PROXY" ]]; then
     echo "--> Proxy Download"
-    result=$( (time wget --output-document=/dev/null -e use_proxy=yes -e http_proxy="http://$PROXY" "$DEST") 2>&1 | grep real | awk '{print $2}')
+    result=$( (time wget --output-document=/dev/null -e use_proxy=yes -e http_proxy="http://$PROXY" "$WGET_DEST") 2>&1 | grep real | awk '{print $2}')
     seconds=$(echo "$result" | awk -Fm '{print ($1*60)+$2}')
     echo "Time: ${seconds}s"
     log_result "wget" "proxy_time" "$seconds"
@@ -83,14 +101,18 @@ run_wget_bandwidth() {
 
 run_iperf3() {
   echo -e "\n[Bandwidth Test - iperf3]"
+  echo "Destination: $IPERF_DEST"
 
-  result=$(iperf3 -c "$DEST" 2>/dev/null | grep -A1 "receiver" | grep -Eo '[0-9.]+ Mbits/sec')
+  result=$(iperf3 -c "$IPERF_DEST" 2>/dev/null | grep -A1 "receiver" | grep -Eo '[0-9.]+ Mbits/sec')
   echo "Speed: ${result:-N/A}"
   log_result "iperf3" "direct_speed" "${result:-N/A}"
 }
 
 echo "=== Running Network Test ==="
-echo "Destination: $DEST"
+echo "Default Destination: $DEST"
+[[ -n "$LATENCY_DEST" ]] && echo "Latency Destination: $LATENCY_DEST"
+[[ -n "$WGET_DEST" ]] && echo "Wget Destination: $WGET_DEST"
+[[ -n "$IPERF_DEST" ]] && echo "iPerf3 Destination: $IPERF_DEST"
 [[ -n "$PROXY" ]] && echo "Proxy: $PROXY"
 echo "Test Type: $TEST_TYPE"
 echo "Results will be logged to $LOG_FILE"
