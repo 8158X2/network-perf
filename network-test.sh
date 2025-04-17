@@ -2,10 +2,17 @@
 # build 0002
 # network_test.sh - Unified network testing script for RHEL 9.4 with CSV logging
 
-LOG_FILE="network_test_log.csv"
+# Define log files
+LATENCY_LOG="latency_test_log.csv"
+WGET_LOG="wget_test_log.csv"
+IPERF_LOG="iperf_test_log.csv"
 SUMMARY_FILE="network_test_summary.csv"
 PLOT_DIR="network_plots"
-[[ ! -f "$LOG_FILE" ]] && echo "timestamp,test_type,destination,proxy,metric,value" > "$LOG_FILE"
+
+# Create log files with headers if they don't exist
+[[ ! -f "$LATENCY_LOG" ]] && echo "timestamp,test_type,destination,proxy,metric,value" > "$LATENCY_LOG"
+[[ ! -f "$WGET_LOG" ]] && echo "timestamp,test_type,destination,proxy,metric,value" > "$WGET_LOG"
+[[ ! -f "$IPERF_LOG" ]] && echo "timestamp,test_type,destination,proxy,metric,value" > "$IPERF_LOG"
 mkdir -p "$PLOT_DIR"
 
 usage() {
@@ -53,7 +60,17 @@ log_result() {
   local type=$1
   local metric=$2
   local value=$3
-  echo "$(timestamp),$type,$DEST,${PROXY:-none},$metric,$value" >> "$LOG_FILE"
+  local dest=$4
+  local log_file
+  
+  case $type in
+    latency) log_file="$LATENCY_LOG" ;;
+    wget) log_file="$WGET_LOG" ;;
+    iperf3) log_file="$IPERF_LOG" ;;
+    *) log_file="network_test_log.csv" ;;
+  esac
+  
+  echo "$(timestamp),$type,$dest,${PROXY:-none},$metric,$value" >> "$log_file"
 }
 
 run_latency() {
@@ -64,19 +81,19 @@ run_latency() {
     echo "--> HTTP Latency (Direct)"
     result=$(curl -o /dev/null -s -w "%{time_total}" "$LATENCY_DEST")
     echo "Time: ${result}s"
-    log_result "latency" "http_direct" "$result"
+    log_result "latency" "http_direct" "$result" "$LATENCY_DEST"
 
     if [[ -n "$PROXY" ]]; then
       echo "--> HTTP Latency (Via Proxy)"
       result=$(curl -o /dev/null -s -w "%{time_total}" -x "$PROXY" "$LATENCY_DEST")
       echo "Time: ${result}s"
-      log_result "latency" "http_proxy" "$result"
+      log_result "latency" "http_proxy" "$result" "$LATENCY_DEST"
     fi
   else
     echo "--> Ping Latency"
     result=$(ping -c 5 "$LATENCY_DEST" | awk -F '/' 'END{ print $(NF-1) }')
     echo "Avg Latency: ${result}ms"
-    log_result "latency" "ping" "$result"
+    log_result "latency" "ping" "$result" "$LATENCY_DEST"
   fi
 }
 
@@ -88,14 +105,14 @@ run_wget_bandwidth() {
   result=$( (time wget --output-document=/dev/null "$WGET_DEST") 2>&1 | grep real | awk '{print $2}')
   seconds=$(echo "$result" | awk -Fm '{print ($1*60)+$2}')
   echo "Time: ${seconds}s"
-  log_result "wget" "direct_time" "$seconds"
+  log_result "wget" "direct_time" "$seconds" "$WGET_DEST"
 
   if [[ -n "$PROXY" ]]; then
     echo "--> Proxy Download"
     result=$( (time wget --output-document=/dev/null -e use_proxy=yes -e http_proxy="http://$PROXY" "$WGET_DEST") 2>&1 | grep real | awk '{print $2}')
     seconds=$(echo "$result" | awk -Fm '{print ($1*60)+$2}')
     echo "Time: ${seconds}s"
-    log_result "wget" "proxy_time" "$seconds"
+    log_result "wget" "proxy_time" "$seconds" "$WGET_DEST"
   fi
 }
 
@@ -105,7 +122,7 @@ run_iperf3() {
 
   result=$(iperf3 -c "$IPERF_DEST" 2>/dev/null | grep -A1 "receiver" | grep -Eo '[0-9.]+ Mbits/sec')
   echo "Speed: ${result:-N/A}"
-  log_result "iperf3" "direct_speed" "${result:-N/A}"
+  log_result "iperf3" "direct_speed" "${result:-N/A}" "$IPERF_DEST"
 }
 
 echo "=== Running Network Test ==="
@@ -115,7 +132,7 @@ echo "Default Destination: $DEST"
 [[ -n "$IPERF_DEST" ]] && echo "iPerf3 Destination: $IPERF_DEST"
 [[ -n "$PROXY" ]] && echo "Proxy: $PROXY"
 echo "Test Type: $TEST_TYPE"
-echo "Results will be logged to $LOG_FILE"
+echo "Results will be logged to $LATENCY_LOG, $WGET_LOG, $IPERF_LOG"
 echo "======================================="
 
 case $TEST_TYPE in
@@ -137,9 +154,10 @@ generate_summary() {
   # Create summary header
   echo "timestamp,ping_latency,http_direct_latency,http_proxy_latency,wget_direct_time,wget_proxy_time,iperf3_speed" > "$summary_file"
   
-  # Process the log file to create a summary
+  # Process all log files to create a summary
   awk -F',' '
-    NR>1 {
+    FNR==1 { next }  # Skip headers
+    {
       timestamp=$1
       test_type=$2
       metric=$5
@@ -181,7 +199,7 @@ generate_summary() {
           data[ts]["iperf3"]
       }
     }
-  ' "$LOG_FILE" | sort >> "$summary_file"
+  ' "$LATENCY_LOG" "$WGET_LOG" "$IPERF_LOG" | sort >> "$summary_file"
 }
 
 generate_plots() {
@@ -250,7 +268,9 @@ generate_summary
 generate_plots
 
 echo -e "\nTest results have been logged to:"
-echo "- Detailed log: $LOG_FILE"
+echo "- Latency test log: $LATENCY_LOG"
+echo "- Wget test log: $WGET_LOG"
+echo "- iPerf3 test log: $IPERF_LOG"
 echo "- Summary report: $SUMMARY_FILE"
 echo "- Plots: $PLOT_DIR/*.png"
 
